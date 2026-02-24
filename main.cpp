@@ -4,6 +4,7 @@
 #include "mbed.h"
 #include "C12832.h"
 #include "QEI.h"
+#include "ds2781.h"
 #include "motor.h"
 #include "pot.h"
 
@@ -14,6 +15,9 @@
 #define SQUARE_RIGHT_TURN_PULSES 1600
 #define SQUARE_LEFT_TURN_PULSES 1600
 #define U_TURN_PULSES 1400
+
+#define CTL_LOOP_FREQUENCY 1000
+#define CTL_LOOP_PERIOD_US (1000000/CTL_LOOP_FREQUENCY)
 
 /// target rpm in run state
 #define RUN_TARGET_RPM 360
@@ -159,8 +163,26 @@ int main() {
             last_ctl_time = current_time;
 
             switch (state){
-                case STATE_IDLE:
+                case STATE_IDLE:{
+                    // run every 200 ms
+                    if (current_time - last_display_time >= 200000){
+                        last_display_time = current_time;
+
+                        lcd.cls();
+
+                        lcd.locate(0, 0);
+                        lcd.printf("idle");
+
+                        lcd.locate(0, 10);
+                        lcd.printf("voltage: %.2f v", (float)(ReadVoltage()) * 0.00976f);
+
+                        lcd.locate(0, 20);
+                        lcd.printf("temperature: %.2f °C", (float)(ReadTemperature()) * 0.125f);
+
+                        lcd.copy_to_lcd();
+                    }
                     break;
+                }
 
                 ///////////////////////////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////
