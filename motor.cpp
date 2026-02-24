@@ -103,6 +103,7 @@ bool MotorControl::isBipolarMode(){
     return bipolar;
 }
 
+/// get the accumulated number of pulses, positive number indicates forward
 int MotorControl::getPulses(){
     if (inverted){
         return -encoder.getPulses();
@@ -110,7 +111,7 @@ int MotorControl::getPulses(){
     return encoder.getPulses();
 }
 
-/// interval: interval in us
+/// calculate the rpm from pulses and interval since last query
 float MotorControl::getRPM(int interval){
 
     int pulses = this->getPulses();

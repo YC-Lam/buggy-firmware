@@ -7,11 +7,15 @@
 #include "motor.h"
 #include "pot.h"
 
-/// number of pulses when running square
-#define SQUARE_TURN_PULSES 1600
-#define SQUARE_STRAIGHT_PULSES 2048
-#define SQUARE_UTURN_PULSES 1600
+#define BLE_BUFFER_SIZE 6
 
+/// number of pulses when running square
+#define SQUARE_STRAIGHT_PULSES 2048
+#define SQUARE_RIGHT_TURN_PULSES 1600
+#define SQUARE_LEFT_TURN_PULSES 1600
+#define U_TURN_PULSES 1400
+
+/// target rpm in run state
 #define RUN_TARGET_RPM 360
 #define RUN_SQUARE_CORNER_RPM 180
 
@@ -32,7 +36,7 @@ C12832 lcd(D11,D13, D12,D7,D10);
 /// serial connection to the bluetooth module
 Serial hm10(PA_11, PA_12);
 /// buffer for reading from serial
-char hm10_buffer[6];
+char hm10_buffer[BLE_BUFFER_SIZE];
 int hm10_buffer_cursor = 0;
 
 ///  OneWire pin for the DS2781
@@ -40,7 +44,7 @@ DigitalInOut   one_wire_pin(PD_2);
 
 /// state machine states
 enum {
-    STATE_IDLE, STATE_TEST_MOTOR, STATE_SQUARE
+    STATE_IDLE, STATE_TEST_MOTOR, STATE_SQUARE, STATE_UTURN
 } state;
 
 /// ISR to run when data is received
@@ -49,8 +53,58 @@ void hm10_received_isr()
     // get character from serial and increment counter
     hm10_buffer[hm10_buffer_cursor++] = hm10.getc();
     // reset cursor if buffer is full
-    if (hm10_buffer_cursor == 5){
+    if (hm10_buffer_cursor == BLE_BUFFER_SIZE - 1){
         hm10_buffer_cursor = 0;
+    }
+}
+
+/// function to simplify repeat code in square state.
+/// This function takes in the number of pulses for each motor,
+/// if the number is negative, motor goes backwards
+void run_motor_pulses_blocking(int left_motor_pulses, int right_motor_pulses, float power){
+    // motor is done if no pulses to run
+    bool left_motor_done = left_motor_pulses == 0;
+    bool right_motor_done = right_motor_pulses == 0;
+
+    // get the pulses before running
+    int init_left_pulses = left_motor.getPulses();
+    int init_right_pulses = right_motor.getPulses();
+
+    // determind direction of motor
+    if (left_motor_pulses < 0){
+        left_motor.setBackward();
+        left_motor_pulses = -left_motor_pulses;
+    } else{
+        left_motor.setForward();
+    }
+    // determind direction of motor
+    if (right_motor_pulses < 0 ){
+        right_motor.setBackward();
+        right_motor_pulses = -right_motor_pulses;
+    } else{
+        right_motor.setForward();
+    }
+
+    // enable motor if there's pulses to run
+    if (left_motor_pulses > 0){
+        left_motor.setPower(power);
+    }
+    if (right_motor_pulses > 0){
+        right_motor.setPower(power);
+    }
+
+    while (true){
+        if (std::abs(left_motor.getPulses() - init_left_pulses) >= left_motor_pulses){
+            left_motor.setPower(0.0);
+            left_motor_done = true;
+        }
+        if (std::abs(right_motor.getPulses() - init_right_pulses) >= right_motor_pulses){
+            right_motor.setPower(0.0);
+            right_motor_done = true;
+        }
+        if (right_motor_done && left_motor_done){
+            break;
+        }
     }
 }
 
@@ -66,7 +120,8 @@ int main() {
     
     // setup bluetooth serial
     hm10.baud(9600);
-    memset(hm10_buffer, 0, 10);
+    memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+    // attach interrupt
     hm10.attach(&hm10_received_isr, Serial::RxIrq);
 
     // set initial stage
@@ -83,14 +138,19 @@ int main() {
     t.start();
 
     // start the control loop
-    while(1) {
+    while(true) {
         // get the current time
         int current_time = t.read_us();
 
         // check if a state change is required
         if (strcmp(hm10_buffer, "squar") == 0){
             state = STATE_SQUARE;
-            memset(hm10_buffer, 0, 5);
+            // clear buffer
+            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+        } else if (strcmp(hm10_buffer, "uturn") == 0) {
+            state = STATE_UTURN;
+            // clear buffer
+            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
         }
 
         // only run every 1000 us, aka 1kHz
@@ -167,70 +227,77 @@ int main() {
 
                     motor_en.write(1);
 
-                    int last_left_pulses = 0;
-                    int last_right_pulses = 0;
-                    bool left_motor_done, right_motor_done;
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // right turn
+                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // right turn
+                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // right turn
+                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // U-turn
+                    run_motor_pulses_blocking(U_TURN_PULSES, -U_TURN_PULSES, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // left turn
+                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // left turn
+                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
+                    // left turn
+                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
+                    wait(1.0);
+                    // walk 50cm
+                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
+                    wait(1.0);
 
-                     //first square
-                    for (int i=0; i < 3; i++){
-                        
-                        // straight line
+                    motor_en.write(0);
+                    state = STATE_IDLE;
+                    break;
+                }
 
-                        left_motor.setForward();
-                        right_motor.setForward();
+                ///////////////////////////////////////////////////////////////////
+                ///////////////////////////////////////////////////////////////////
+                ////////////////                        U-TURN  STATE                     ////////////////////
+                ///////////////////////////////////////////////////////////////////
+                ///////////////////////////////////////////////////////////////////
+                case STATE_UTURN:{
+                    // disable bipolar mode
+                    left_motor.setBipolarMode(false);
+                    right_motor.setBipolarMode(false);
 
-                        left_motor.setPower(0.8);
-                        right_motor.setPower(0.8);
+                    // disable motors
+                    left_motor.setPower(0.0);
+                    right_motor.setPower(0.0);
 
-                        last_left_pulses = left_motor.getPulses();
-                        last_right_pulses = right_motor.getPulses();
+                    motor_en.write(1);
 
-                        left_motor_done = false;
-                        right_motor_done = false;
-
-                        // walk 500 mm
-                        while (1){
-                            if (left_motor.getPulses() - last_left_pulses >= SQUARE_STRAIGHT_PULSES){
-                                left_motor.setPower(0.0);
-                                left_motor_done = true;
-                            }
-                            if (right_motor.getPulses() - last_right_pulses >= SQUARE_STRAIGHT_PULSES){
-                                right_motor.setPower(0.0);
-                               right_motor_done = true;
-                            }
-
-                            if (right_motor_done && left_motor_done){
-                                break;
-                            }
-                        }
-
-                        // right turn
-                        wait(1.0);
-
-                        last_left_pulses = left_motor.getPulses();
-                        last_right_pulses = right_motor.getPulses();
-
-                        left_motor_done = true;
-                        right_motor_done = false;
-                        
-                        left_motor.setPower(0.0);
-                        right_motor.setPower(0.6);
-
-                        // turn 90 degrees
-                        while (1){
-
-                            if (right_motor.getPulses() - last_right_pulses >= SQUARE_TURN_PULSES){
-                                right_motor.setPower(0.0);
-                                right_motor_done = true;
-                            }
-
-                            if (right_motor_done && left_motor_done){
-                                break;
-                            }
-                        }
-
-                        wait(0.5);
-                    }
+                    wait(0.5);
+                    // U-turn
+                    run_motor_pulses_blocking(U_TURN_PULSES, -U_TURN_PULSES, 0.6);
+                    wait(0.5);
 
                     motor_en.write(0);
                     state = STATE_IDLE;
