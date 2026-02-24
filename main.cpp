@@ -54,8 +54,12 @@ enum {
 /// ISR to run when data is received
 void hm10_received_isr() 
 {
-    // get character from serial and increment counter
-    hm10_buffer[hm10_buffer_cursor++] = hm10.getc();
+    // get character from serial
+    char c = hm10.getc();
+    // store character and increment counter
+    if ((c != '\n') && (c != '\r')){
+        hm10_buffer[hm10_buffer_cursor++] = c;
+    }
     // reset cursor if buffer is full
     if (hm10_buffer_cursor == BLE_BUFFER_SIZE - 1){
         hm10_buffer_cursor = 0;
@@ -151,10 +155,12 @@ int main() {
             state = STATE_SQUARE;
             // clear buffer
             memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+            hm10_buffer_cursor = 0;
         } else if (strcmp(hm10_buffer, "uturn") == 0) {
             state = STATE_UTURN;
             // clear buffer
             memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+            hm10_buffer_cursor = 0;
         }
 
         // only run every 1000 us, aka 1kHz
@@ -171,7 +177,7 @@ int main() {
                         lcd.cls();
 
                         lcd.locate(0, 0);
-                        lcd.printf("idle");
+                        lcd.printf("idle, ble cursor: %d  msg: %s", hm10_buffer_cursor, hm10_buffer);
 
                         lcd.locate(0, 10);
                         lcd.printf("voltage: %.2f v", (float)(ReadVoltage()) * 0.00976f);
