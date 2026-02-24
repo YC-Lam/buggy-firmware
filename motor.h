@@ -1,18 +1,26 @@
 #include "mbed.h"
 #include "QEI.h"
 
-class Motor{
+class MotorControl{
     private:
-        int last_query_time, last_query_pulses;
         QEI encoder;
-        bool invert_pulses;
-        PwmOut pwm;
-        DigitalOut bipolar, dir;
+        PwmOut pwm_pin;
+        DigitalOut bipolar_pin, dir_pin;
+
+        bool inverted, forward, bipolar;
+        float power;
+        int last_rpm_query_pulses;
+        
     public:
-        Motor(PinName pwm, PinName bipolar, PinName dir, PinName chA, PinName chB, bool invert_pulses);
-        void setPWM(float value);
-        void setBipolar(int value);
-        void setDir(int direction);
-        int getRPM(int time);
+        MotorControl(PinName pwm, PinName bipolar, PinName dir, PinName chA, PinName chB, bool inverted);
+        
+        void setPWM(float duty);
+        void setPower(float value);
+        void setBipolarMode(bool enable);
+        void setForward();
+        void setBackward();
+        
+        bool isBipolarMode();
         int getPulses();
+        float getRPM(int interval);
 };
