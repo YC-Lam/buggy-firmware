@@ -24,7 +24,7 @@ DigitalOut motor_en(PB_13);
 /// left motor, aka motor A
 MotorControl left_motor(PC_8, PC_5, PB_2, PC_10, PC_12, false);
 /// right motot, aka motor B
-MotorControl right_motor(PA_15, PB_12, PB_14, PC_14, PC_15, true);
+MotorControl right_motor(PA_15, PB_12, PB_14, PA_13, PA_14, true);
 
 /// potentiometer on the mbed shield
 Potentiometer pot1(A0, 3.3);
