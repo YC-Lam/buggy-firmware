@@ -7,6 +7,10 @@
 #include <cstdlib>
 #include <cstring>
 
+#define SQUARE_TURN_PULSES 1600
+#define SQUARE_STRAIGHT_PULSES 2048
+#define SQUARE_UTURN_PULSES 1600
+
 DigitalOut motor_en(PB_13);
 Motor left_motor(PC_8, PC_5, PB_2, PC_10, PC_12, false);
 Motor right_motor(PA_15, PB_12, PB_14, PC_14, PC_15, true);
@@ -126,9 +130,11 @@ int main() {
 
                     bool left_motor_done, right_motor_done;
 
-                     //repeat four times
-                    //for (int i=0; i < 4; i++){
-                        /*
+                     //first square
+                    for (int i=0; i < 3; i++){
+                        
+                        // straight line
+
                         left_motor.setDir(1);
                         right_motor.setDir(0);
 
@@ -143,20 +149,21 @@ int main() {
 
                         // walk 500 mm
                         while (1){
-                            if (left_motor.getPulses() - last_left_pulses >= 1024 * 2){
+                            if (left_motor.getPulses() - last_left_pulses >= SQUARE_STRAIGHT_PULSES){
                                 left_motor.setPWM(1.0);
                                 left_motor_done = true;
                             }
-                            if (right_motor.getPulses() - last_right_pulses >= 1024 * 2){
+                            if (right_motor.getPulses() - last_right_pulses >= SQUARE_STRAIGHT_PULSES){
                                 right_motor.setPWM(1.0);
                                right_motor_done = true;
                             }
-                        }*/
 
-                        wait(0.5);
+                            if (right_motor_done && left_motor_done){
+                                break;
+                            }
+                        }
 
-                        // left turn
-
+                        // right turn
                         wait(1.0);
 
                         last_left_pulses = left_motor.getPulses();
@@ -171,7 +178,7 @@ int main() {
                         // turn 90 degrees
                         while (1){
 
-                            if (right_motor.getPulses() - last_right_pulses >= 1600){
+                            if (right_motor.getPulses() - last_right_pulses >= SQUARE_TURN_PULSES){
                                 right_motor.setPWM(1.0);
                                 right_motor_done = true;
                             }
@@ -182,7 +189,7 @@ int main() {
                         }
 
                         wait(0.5);
-                    //}
+                    }
 
                     motor_en.write(0);
                     state = STATE_IDLE;
