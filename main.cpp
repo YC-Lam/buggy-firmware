@@ -177,10 +177,10 @@ int main() {
                         lcd.cls();
 
                         lcd.locate(0, 0);
-                        lcd.printf("idle, ble cursor: %d  msg: %s", hm10_buffer_cursor, hm10_buffer);
+                        lcd.printf("voltage: %.2f v", (float)(ReadVoltage()) * 0.00976f);
 
                         lcd.locate(0, 10);
-                        lcd.printf("voltage: %.2f v", (float)(ReadVoltage()) * 0.00976f);
+                        lcd.printf("current %.2f A", (float)(ReadCurrent())/ 6400.0f);
 
                         lcd.locate(0, 20);
                         lcd.printf("temperature: %.2f °C", (float)(ReadTemperature()) * 0.125f);
