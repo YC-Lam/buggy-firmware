@@ -7,6 +7,8 @@
 #include "ds2781.h"
 #include "motor.h"
 #include "pot.h"
+#include "pid.h"
+#include "sensor.h"
 
 #define BLE_BUFFER_SIZE 6
 
@@ -30,9 +32,11 @@ MotorControl left_motor(PC_8, PC_5, PB_2, PC_10, PC_12, false);
 /// right motot, aka motor B
 MotorControl right_motor(PA_15, PB_12, PB_14, PA_13, PA_14, true);
 
-/// potentiometer on the mbed shield
-Potentiometer pot1(A0, 3.3);
-Potentiometer pot2(A1, 3.3);
+PidControl left_motor_pid(0.00278, 0.0, 0.0);
+PidControl right_motor_pid(0.00278, 0.0, 0.0);
+PidControl steering_pid();
+
+SensorArray sensor_array(A5, A4, A3, A2, A1, A0, PC_3);
 
 /// LCD display on the mbed shield
 C12832 lcd(D11,D13, D12,D7,D10);
@@ -48,7 +52,7 @@ DigitalInOut   one_wire_pin(PD_2);
 
 /// state machine states
 enum {
-    STATE_IDLE, STATE_TEST_MOTOR, STATE_SQUARE, STATE_UTURN
+    STATE_IDLE, STATE_TEST_MOTOR, STATE_SQUARE, STATE_UTURN, STATE_RUN
 } state;
 
 /// ISR to run when data is received
@@ -151,13 +155,34 @@ int main() {
         int current_time = t.read_us();
 
         // check if a state change is required
-        if (strcmp(hm10_buffer, "squar") == 0){
-            state = STATE_SQUARE;
+        if (strcmp(hm10_buffer, "stop") == 0){
+            // set state
+            state = STATE_IDLE;
+            motor_en.write(0);
             // clear buffer
             memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
             hm10_buffer_cursor = 0;
+
+        } else if (strcmp(hm10_buffer, "test") == 0){
+            // set state
+            state = STATE_TEST_MOTOR;
+            motor_en.write(0);
+            // clear buffer
+            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+            hm10_buffer_cursor = 0;
+
+        } else if (strcmp(hm10_buffer, "squar") == 0){
+            // set state
+            state = STATE_SQUARE;
+            motor_en.write(0);
+            // clear buffer
+            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
+            hm10_buffer_cursor = 0;
+
         } else if (strcmp(hm10_buffer, "uturn") == 0) {
+            // set state
             state = STATE_UTURN;
+            motor_en.write(0);
             // clear buffer
             memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
             hm10_buffer_cursor = 0;
@@ -196,26 +221,10 @@ int main() {
                 ///////////////////////////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////
                 case STATE_TEST_MOTOR: {
-                    // set to bipolar mode
-                    if (!right_motor.isBipolarMode()){
-                        right_motor.setBipolarMode(true);
-                    }
-                    if (!left_motor.isBipolarMode()){
-                        left_motor.setBipolarMode(true);
-                    }
                     
                     // run every 200 ms
                     if (current_time - last_display_time >= 200000){
                         last_display_time = current_time;
-
-                        float left_duty = pot1.amplitudeNorm();
-                        float right_duty = pot2.amplitudeNorm();
-                        left_motor.setPWM(left_duty);
-                        right_motor.setPWM(right_duty);
-
-                        if (motor_en.read() == 0){
-                            motor_en.write(1);
-                        }
 
                         int left = left_motor.getPulses();
                         int right = right_motor.getPulses();
@@ -232,7 +241,11 @@ int main() {
 
                         lcd.locate(0, 20);
 
-                        lcd.printf("duty: %.2f, %.2f ", left_duty, right_duty);
+                        float a0, a1, a2, a3, a4, a5;
+
+                        sensor_array.read_raw(&a0, &a1, &a2, &a3, &a4, &a5);
+
+                        lcd.printf("%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", a0, a1, a2, a3, a4,a5);
                             
                         lcd.copy_to_lcd();
                     }
