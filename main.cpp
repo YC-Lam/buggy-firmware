@@ -32,9 +32,10 @@ MotorControl left_motor(PC_8, PC_5, PB_2, PC_10, PC_12, false);
 /// right motot, aka motor B
 MotorControl right_motor(PA_15, PB_12, PB_14, PA_13, PA_14, true);
 
-PidControl left_motor_pid(0.00278, 0.0, 0.0);
-PidControl right_motor_pid(0.00278, 0.0, 0.0);
-PidControl steering_pid();
+/// put in calibrated gain
+PidControl left_motor_pid(0.002, 0.0, 0.0);
+PidControl right_motor_pid(0.002, 0.0, 0.0);
+PidControl steering_pid(0.0, 0.0, 0.0);
 
 SensorArray sensor_array(A5, A4, A3, A2, A1, A0, PC_3);
 
