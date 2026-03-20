@@ -220,18 +220,7 @@ int main() {
                 ////////////////                          TEST  STATE                       ////////////////////
                 ///////////////////////////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////
-                case STATE_TEST_MOTOR: {
-
-                    // disable bipolar mode
-                    left_motor.setBipolarMode(false);
-                    right_motor.setBipolarMode(false);
-
-                    // disable motors
-                    left_motor.setPower(0.0);
-                    right_motor.setPower(0.0);
-
-                    motor_en.write(1);// disable bipolar mode// disable bipolar mode
-                    
+                case STATE_TEST_MOTOR: {              
                     // run every 200 ms
                     if (current_time - last_display_time >= 200000){
                         last_display_time = current_time;
