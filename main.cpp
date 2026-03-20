@@ -13,7 +13,7 @@
 #define BLE_BUFFER_SIZE 6
 
 /// number of pulses when running square
-#define SQUARE_STRAIGHT_PULSES 2048
+#define SQUARE_STRAIGHT_PULSES 2048 // please update with calibrated value
 #define SQUARE_RIGHT_TURN_PULSES 1600
 #define SQUARE_LEFT_TURN_PULSES 1600
 #define U_TURN_PULSES 1400
