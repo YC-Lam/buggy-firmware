@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 
@@ -6,24 +7,36 @@
 #include "QEI.h"
 #include "ds2781.h"
 #include "motor.h"
-#include "pot.h"
 #include "pid.h"
 #include "sensor.h"
 
 #define BLE_BUFFER_SIZE 6
 
-/// number of pulses when running square
-#define SQUARE_STRAIGHT_PULSES 2048 // please update with calibrated value
-#define SQUARE_RIGHT_TURN_PULSES 1600
-#define SQUARE_LEFT_TURN_PULSES 1600
-#define U_TURN_PULSES 1400
-
+// control loop frequency
 #define CTL_LOOP_FREQUENCY 1000
 #define CTL_LOOP_PERIOD_US (1000000/CTL_LOOP_FREQUENCY)
 
+// maximum differential factor, defines the maximum difference between two motor
+#define MAX_DIFF_FACTOR 140
+// turn factor constant, defines how much a turn reduces target speed
+#define TURN_FACTOR_CONSTANT 0.5f
+
 /// target rpm in run state
 #define RUN_TARGET_RPM 360
-#define RUN_SQUARE_CORNER_RPM 180
+#define GAP_TARGET_RPM 250
+#define UTURN_TARGET_RPM 120
+
+#define STEER_PID_KP 0.0f
+#define STEER_PID_KI 0.0f
+#define STEER_PID_KD 0.0f
+
+#define LEFT_PID_KP 0.0f
+#define LEFT_PID_KI 0.0f
+#define LEFT_PID_KD 0.0f
+
+#define RIGHT_PID_KP 0.0f
+#define RIGHT_PID_KI 0.0f
+#define RIGHT_PID_KD 0.0f
 
 /// enable pin for both motors
 DigitalOut motor_en(PB_13);
@@ -33,9 +46,9 @@ MotorControl left_motor(PC_8, PC_5, PB_2, PC_10, PC_12, false);
 MotorControl right_motor(PA_15, PB_12, PB_14, PA_13, PA_14, true);
 
 /// put in calibrated gain
-PidControl left_motor_pid(0.002, 0.0, 0.0);
-PidControl right_motor_pid(0.002, 0.0, 0.0);
-PidControl steering_pid(0.0, 0.0, 0.0);
+PidControl left_motor_pid(LEFT_PID_KP, LEFT_PID_KI, LEFT_PID_KD);
+PidControl right_motor_pid(RIGHT_PID_KP, RIGHT_PID_KI, RIGHT_PID_KD);
+PidControl steering_pid(STEER_PID_KP, STEER_PID_KI, STEER_PID_KD);
 
 SensorArray sensor_array(A5, A4, A3, A2, A1, A0, PC_3);
 
@@ -53,8 +66,64 @@ DigitalInOut   one_wire_pin(PD_2);
 
 /// state machine states
 enum {
-    STATE_IDLE, STATE_TEST_MOTOR, STATE_SQUARE, STATE_UTURN, STATE_RUN
+    STATE_IDLE, 
+    STATE_TEST_MOTOR, 
+    STATE_SQUARE, 
+    STATE_UTURN, 
+    STATE_RUN, 
+    STATE_GAP
 } state;
+
+void enter_idle_state(){
+    state = STATE_IDLE;
+    steering_pid.reset();
+    left_motor_pid.reset();
+    right_motor_pid.reset();
+
+    motor_en.write(0);
+}
+
+void enter_run_state(){
+    state = STATE_RUN;
+    steering_pid.reset();
+    left_motor_pid.reset();
+    right_motor_pid.reset();
+
+    left_motor.getRPM(1000);
+    right_motor.getRPM(1000);
+    
+    left_motor.setBipolarMode(false);
+    right_motor.setBipolarMode(false);
+
+    left_motor.setForward();
+    right_motor.setForward();
+
+    left_motor.setPower(0.0);
+    right_motor.setPower(0.0);
+
+    motor_en.write(1);
+}
+
+void enter_uturn_state(){
+    state = STATE_UTURN;
+    steering_pid.reset();
+    left_motor_pid.reset();
+    right_motor_pid.reset();
+
+    left_motor.getRPM(1000);
+    right_motor.getRPM(1000);
+    
+    left_motor.setBipolarMode(false);
+    right_motor.setBipolarMode(false);
+
+    left_motor.setForward();
+    right_motor.setBackward();
+
+    left_motor.setPower(0.0);
+    right_motor.setPower(0.0);
+
+    motor_en.write(1);
+}
 
 /// ISR to run when data is received
 void hm10_received_isr() 
@@ -71,52 +140,103 @@ void hm10_received_isr()
     }
 }
 
-/// function to simplify repeat code in square state.
-/// This function takes in the number of pulses for each motor,
-/// if the number is negative, motor goes backwards
-void run_motor_pulses_blocking(int left_motor_pulses, int right_motor_pulses, float power){
-    // motor is done if no pulses to run
-    bool left_motor_done = left_motor_pulses == 0;
-    bool right_motor_done = right_motor_pulses == 0;
+// sensor array multi sampling
+float sensor_sample_sum = 0.0;
+int sensor_sample_count = 0;
+// previous differential factor
+float prev_diff_factor = 0.0;
 
-    // get the pulses before running
-    int init_left_pulses = left_motor.getPulses();
-    int init_right_pulses = right_motor.getPulses();
+// task running at 4kHz to get samples
+void state_machine_task(){
+    float position = sensor_array.read_distance_from_centre();
 
-    // determind direction of motor
-    if (left_motor_pulses < 0){
-        left_motor.setBackward();
-        left_motor_pulses = -left_motor_pulses;
+    if (std::isnan(position) || std::isnan(sensor_sample_sum)){
+        sensor_sample_sum = std::sqrtf(-1.0f);
+
+    } else if (sensor_sample_count < 3){
+        sensor_sample_count++;
+        sensor_sample_sum = sensor_sample_sum + position;
+
     } else{
-        left_motor.setForward();
-    }
-    // determind direction of motor
-    if (right_motor_pulses < 0 ){
-        right_motor.setBackward();
-        right_motor_pulses = -right_motor_pulses;
-    } else{
-        right_motor.setForward();
-    }
+        // this will run at 1kHz
 
-    // enable motor if there's pulses to run
-    if (left_motor_pulses > 0){
-        left_motor.setPower(power);
-    }
-    if (right_motor_pulses > 0){
-        right_motor.setPower(power);
-    }
+        // get the mean position
+        position = (sensor_sample_sum +position)/ 4.0f;
+        // reset sampling variables
+        sensor_sample_count = 0;
+        sensor_sample_sum = 0.0;
 
-    while (true){
-        if (std::abs(left_motor.getPulses() - init_left_pulses) >= left_motor_pulses){
-            left_motor.setPower(0.0);
-            left_motor_done = true;
-        }
-        if (std::abs(right_motor.getPulses() - init_right_pulses) >= right_motor_pulses){
-            right_motor.setPower(0.0);
-            right_motor_done = true;
-        }
-        if (right_motor_done && left_motor_done){
-            break;
+        // get rpm of both motors
+        float left_motor_rpm = left_motor.getRPM(1000);
+        float right_motor_rpm = right_motor.getRPM(1000);
+
+        // actual state machine
+        switch (state){
+            case STATE_IDLE:{
+                break;
+            }
+            case STATE_RUN:{
+                state_run:
+                // check if line is detected
+                if (std::isnan(position)){
+                    // switch to gap state
+                    state = STATE_GAP;
+                    // reset steering pid
+                    steering_pid.reset();
+                    prev_diff_factor = 0.0;
+                    // jump
+                    goto state_gap;
+                }
+                // calculate differential factor
+                float diff_factor = steering_pid.update(position);
+
+                // smooth diff factor
+                diff_factor = 0.6f * diff_factor + 0.4f * prev_diff_factor;
+
+                // clamp diff factor
+                diff_factor = std::fmaxf(std::fminf(diff_factor, MAX_DIFF_FACTOR), -MAX_DIFF_FACTOR);
+
+                // store diff factor for next iteration
+                prev_diff_factor = diff_factor;
+
+                // calculate turn factor
+                float turn_factor = std::fabsf(diff_factor) / MAX_DIFF_FACTOR;
+                // adjust base target rpm
+                float adjusted_base_target = RUN_TARGET_RPM * (1.0f -  TURN_FACTOR_CONSTANT * turn_factor);
+
+                // calculate target RPM
+                float left_target = adjusted_base_target - diff_factor;
+                float right_target = adjusted_base_target + diff_factor;
+
+                // calculate rpm error
+                float left_error = left_target - left_motor_rpm;
+                float right_error = right_target - right_motor_rpm;
+
+                // update motor pid
+                float left_power = left_motor_pid.update(left_error);
+                float right_power = right_motor_pid.update(right_error);
+
+                // set motor power
+                left_motor.setPower(left_power);
+                right_motor.setPower(right_power);
+
+                break;
+            }
+            case STATE_GAP:{
+                state_gap:
+                // check if line is detected
+                if (!std::isnan(position)){
+                    // switch to run state
+                    state = STATE_RUN;
+                    goto state_run;
+                }
+                break;
+            }
+            case STATE_UTURN:{
+                break;
+            }
+            default:
+                break;
         }
     }
 }
@@ -149,6 +269,9 @@ int main() {
 
     // start the timer
     t.start();
+
+    // gap run distance, used by state_gap
+    float gap_run_distance;
 
     // start the control loop
     while(true) {
@@ -195,6 +318,10 @@ int main() {
             last_ctl_time = current_time;
 
             switch (state){
+                ///////////////////////////////////////////////////////////////////
+                ///////////////////////////////////////////////////////////////////
+                ////////////////                          IDLE  STATE                       ////////////////////
+                ///////////////////////////////////////////////////////////////////
                 case STATE_IDLE:{
                     // run every 200 ms
                     if (current_time - last_display_time >= 200000){
@@ -231,91 +358,26 @@ int main() {
 
                         lcd.cls();
                         lcd.locate(0, 0);
-                        lcd.printf("pulses: %d, %d", left , right);
-                        lcd.locate(0, 10);
 
                         float left_rpm = left_motor.getRPM(200000);
                         float right_rpm = right_motor.getRPM(200000);
 
                         lcd.printf("rpm: %.2f, %.2f", left_rpm, right_rpm);
 
-                        lcd.locate(0, 20);
+                        lcd.locate(0, 10);
 
                         float a0, a1, a2, a3, a4, a5;
 
                         sensor_array.read_raw(&a0, &a1, &a2, &a3, &a4, &a5);
 
                         lcd.printf("%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", a0, a1, a2, a3, a4,a5);
+
+                        lcd.locate(0, 20);
+
+                        lcd.printf("distance: %.3f, sd: %.3f", sensor_array.read_distance_from_centre(), sensor_array.read_sd());
                             
                         lcd.copy_to_lcd();
                     }
-                    break;
-                }\
-
-                ///////////////////////////////////////////////////////////////////
-                ///////////////////////////////////////////////////////////////////
-                ////////////////                        SQUARE  STATE                     ////////////////////
-                ///////////////////////////////////////////////////////////////////
-                ///////////////////////////////////////////////////////////////////
-                case STATE_SQUARE: {
-                    // disable bipolar mode
-                    left_motor.setBipolarMode(false);
-                    right_motor.setBipolarMode(false);
-
-                    // disable motors
-                    left_motor.setPower(0.0);
-                    right_motor.setPower(0.0);
-
-                    motor_en.write(1);
-
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // right turn
-                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // right turn
-                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // right turn
-                    run_motor_pulses_blocking(SQUARE_RIGHT_TURN_PULSES, 0, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // U-turn
-                    run_motor_pulses_blocking(U_TURN_PULSES, -U_TURN_PULSES, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // left turn
-                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // left turn
-                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-                    // left turn
-                    run_motor_pulses_blocking(0, SQUARE_LEFT_TURN_PULSES, 0.6);
-                    wait(1.0);
-                    // walk 50cm
-                    run_motor_pulses_blocking(SQUARE_STRAIGHT_PULSES, SQUARE_STRAIGHT_PULSES, 0.8);
-                    wait(1.0);
-
-                    motor_en.write(0);
-                    state = STATE_IDLE;
                     break;
                 }
 
@@ -325,23 +387,43 @@ int main() {
                 ///////////////////////////////////////////////////////////////////
                 ///////////////////////////////////////////////////////////////////
                 case STATE_UTURN:{
+                    break;
+                }
+
+                ///////////////////////////////////////////////////////////////////
+                ///////////////////////////////////////////////////////////////////
+                ////////////////                           RUN  STATE                        ////////////////////
+                ///////////////////////////////////////////////////////////////////
+                ///////////////////////////////////////////////////////////////////
+                case STATE_RUN:{
                     // disable bipolar mode
                     left_motor.setBipolarMode(false);
                     right_motor.setBipolarMode(false);
 
-                    // disable motors
-                    left_motor.setPower(0.0);
-                    right_motor.setPower(0.0);
-
-                    motor_en.write(1);
-
-                    wait(0.5);
-                    // U-turn
-                    run_motor_pulses_blocking(U_TURN_PULSES, -U_TURN_PULSES, 0.6);
-                    wait(0.5);
-
                     motor_en.write(0);
-                    state = STATE_IDLE;
+
+                    // get the distance from centre
+                    float sensor_position = sensor_array.read_distance_from_centre();
+                    // get motor rpm from encoder
+                    float left_encoder_rpm = left_motor.getRPM(CTL_LOOP_PERIOD_US);
+                    float right_encoder_rpm = right_motor.getRPM(CTL_LOOP_PERIOD_US);
+
+                    // if position is NaN, no white line is detected
+                    if (std::isnan(sensor_position)){
+                        // reset pid controller
+                        steering_pid.reset();
+                        left_motor_pid.reset();
+                        right_motor_pid.reset();
+
+                        // enter gap detect state
+                        gap_run_distance = 0.0;
+                        state = STATE_GAP;
+                        break;
+                    }
+
+                    float steer_factor = steering_pid.update(std::fabsf(sensor_position));
+
+
                     break;
                 }
                 default:
