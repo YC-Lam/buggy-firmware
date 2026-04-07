@@ -47,12 +47,12 @@ float SensorArray::read_distance_from_centre(){
     }
 
     // calculate norminal total distance
-    double numerator = -85.0*s0  - 51.0*s1  - 17.0*s2  + 17.0*s3  + 51.0*s4 + 85.0*s5;
+    float numerator = -85.0*s0  - 51.0*s1  - 17.0*s2  + 17.0*s3  + 51.0*s4 + 85.0*s5;
     // sum of readings
-    double denominator = s0 + s1 + s2 + s3 + s4 + s5;
+    float denominator = s0 + s1 + s2 + s3 + s4 + s5;
 
     // divide by 2 to get mm
-    double position_mm = (numerator / denominator) / 2.0;
+    float position_mm = (numerator / denominator) / 2.0;
 
     return position_mm;
 }

@@ -4,11 +4,20 @@
 
 #define PWM_PERIOD_US 50
 #define PULSE_PER_REVOLUTION 1024
+// accumulation window
+#define WINDOW_MS 10
+// smoothing factor (0 = slow, 1 = fast)
+#define ALPHA 0.2f             
 
 MotorControl::MotorControl(PinName pwm_pin, PinName bipolar_pin, PinName dir_pin, PinName chA, PinName chB, bool inverted): 
     pwm_pin(pwm_pin), bipolar_pin(bipolar_pin), dir_pin(dir_pin), encoder(chA, chB, NC, 256, QEI::X4_ENCODING), inverted(inverted){
 
-        last_rpm_query_pulses = 0;
+        last_pulses = 0;
+        pulse_accumulator = 0;
+        sample_count = 0;
+        rpm = 0;
+        rpm_filtered = 0;
+        
         power = 0.0;
         
         this->pwm_pin.period_us(PWM_PERIOD_US);
@@ -111,15 +120,32 @@ int MotorControl::getPulses(){
     return encoder.getPulses();
 }
 
-/// calculate the rpm from pulses and interval since last query
-float MotorControl::getRPM(int interval){
+/// calculate the rpm from pulses in window
+float MotorControl::getRPM_1KHz(){
+    // read total encoder count
+    int pulses = getPulses();
+    // new pulses since last sample
+    int diff = pulses - last_pulses;
+    last_pulses = pulses;
 
-    int pulses = this->getPulses();
-    int pulses_diff = pulses - last_rpm_query_pulses;
-    
-    last_rpm_query_pulses = pulses;
+    pulse_accumulator += diff;
+    sample_count++;
 
-    float a = (float)pulses_diff * 60000000.0f;
+    // compute raw RPM every WINDOW_MS
+    if (sample_count >= WINDOW_MS) {
+        // window in microseconds
+        float interval_us = WINDOW_MS * 1000.0f; 
 
-    return  a / (float)(interval* PULSE_PER_REVOLUTION);
+        rpm = (pulse_accumulator * 60000000.0f) /
+              (interval_us * PULSE_PER_REVOLUTION);
+
+        // reset for next window
+        pulse_accumulator = 0;
+        sample_count = 0;
+    }
+
+    // exponential smoothing applied every ms
+    rpm_filtered = ALPHA * rpm + (1.0f - ALPHA) * rpm_filtered;
+
+    return rpm_filtered;
 }
