@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdint>
 
-#define SENSOR_SD_THRESHOLD 0.025
+#define SENSOR_SD_THRESHOLD 0.020
 
 SensorArray::SensorArray(PinName a0, PinName a1, PinName a2, PinName a3, PinName a4, PinName a5, PinName en): a0(a0), a1(a1), a2(a2), a3(a3), a4(a4), a5(a5), en(en){
     this->en.write(1);

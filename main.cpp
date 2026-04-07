@@ -303,7 +303,7 @@ void lcd_update_task(){
 
     lcd.locate(0, 10);
 
-    lcd.printf("distance: %5.3f", lcd_sensor_position);
+    lcd.printf("distance: %5.3f, sd: %f", lcd_sensor_position, sensor_array.read_sd());
 
     lcd.copy_to_lcd();
 }
