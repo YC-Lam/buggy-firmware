@@ -150,15 +150,19 @@ float prev_diff_factor = 0.0;
 void state_machine_task(){
     float position = sensor_array.read_distance_from_centre();
 
-    if (std::isnan(position) || std::isnan(sensor_sample_sum)){
-        sensor_sample_sum = std::sqrtf(-1.0f);
-
-    } else if (sensor_sample_count < 3){
+    if (sensor_sample_count < 3){
+        if (std::isnan(position) || std::isnan(sensor_sample_sum)){
+            // set sum to NaN
+            sensor_sample_sum = std::sqrtf(-1.0f);
+        } else{
+            // add position to sum
+            sensor_sample_sum = sensor_sample_sum + position;
+        }
         sensor_sample_count++;
-        sensor_sample_sum = sensor_sample_sum + position;
 
     } else{
         // this will run at 1kHz
+        // executes every 4th sample
 
         // get the mean position
         position = (sensor_sample_sum +position)/ 4.0f;
@@ -177,6 +181,7 @@ void state_machine_task(){
             }
             case STATE_RUN:{
                 state_run:
+
                 // check if line is detected
                 if (std::isnan(position)){
                     // switch to gap state
@@ -187,6 +192,7 @@ void state_machine_task(){
                     // jump
                     goto state_gap;
                 }
+
                 // calculate differential factor
                 float diff_factor = steering_pid.update(position);
 
@@ -224,12 +230,14 @@ void state_machine_task(){
             }
             case STATE_GAP:{
                 state_gap:
+
                 // check if line is detected
                 if (!std::isnan(position)){
                     // switch to run state
                     state = STATE_RUN;
                     goto state_run;
                 }
+                
                 break;
             }
             case STATE_UTURN:{
