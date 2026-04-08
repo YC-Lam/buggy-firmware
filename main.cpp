@@ -10,7 +10,7 @@
 #include "pid.h"
 #include "sensor.h"
 
-#define BLE_BUFFER_SIZE 6
+#define BLE_BUFFER_SIZE 10
 
 // control loop frequency
 #define CTL_LOOP_FREQUENCY 1000
@@ -21,23 +21,23 @@
 // turn factor constant, defines how much a turn reduces target speed
 #define TURN_FACTOR_CONSTANT 0.5f
 // number of counts before stopping buggy in gap, 1 count per ms
-#define GAP_MAX_COUNT 10
+#define GAP_MAX_COUNT 16
 
 /// target rpm in run state
-#define RUN_TARGET_RPM 360
-#define GAP_TARGET_RPM 250
+#define RUN_TARGET_RPM 200
+#define GAP_TARGET_RPM 200
 #define UTURN_TARGET_RPM 120
 
-#define STEER_PID_KP 3.0f
+#define STEER_PID_KP 2.5f
 #define STEER_PID_KI 0.0f
-#define STEER_PID_KD 8.0f
+#define STEER_PID_KD 4.0f
 
-#define LEFT_PID_KP 0.002f
-#define LEFT_PID_KI 0.1f
+#define LEFT_PID_KP 0.004f
+#define LEFT_PID_KI 0.0f
 #define LEFT_PID_KD 0.0f
 
-#define RIGHT_PID_KP 0.002f
-#define RIGHT_PID_KI 0.1f
+#define RIGHT_PID_KP 0.00399f
+#define RIGHT_PID_KI 0.0f
 #define RIGHT_PID_KD 0.0f
 
 /// enable pin for both motors
@@ -62,6 +62,7 @@ Serial hm10(PA_11, PA_12);
 /// buffer for reading from serial
 char hm10_buffer[BLE_BUFFER_SIZE];
 int hm10_buffer_cursor = 0;
+bool hm10_command_ready = false;
 
 ///  OneWire pin for the DS2781
 DigitalInOut   one_wire_pin(PD_2);
@@ -103,6 +104,24 @@ void enter_run_state(){
     motor_en.write(1);
 }
 
+void enter_test_state(){
+    state = STATE_TEST_MOTOR;
+    steering_pid.reset();
+    left_motor_pid.reset();
+    right_motor_pid.reset();
+    
+    left_motor.setBipolarMode(false);
+    right_motor.setBipolarMode(false);
+
+    left_motor.setForward();
+    right_motor.setForward();
+
+    left_motor.setPower(0.0);
+    right_motor.setPower(0.0);
+
+    motor_en.write(1);
+}
+
 void enter_uturn_state(){
     state = STATE_UTURN;
     steering_pid.reset();
@@ -126,14 +145,20 @@ void hm10_received_isr()
 {
     // get character from serial
     char c = hm10.getc();
-    // store character and increment counter
-    if ((c != '\n') && (c != '\r')){
-        hm10_buffer[hm10_buffer_cursor++] = c;
-    }
-    // reset cursor if buffer is full
-    if (hm10_buffer_cursor == BLE_BUFFER_SIZE - 1){
+    // end of message
+    if ((c == '\n') || (c == '\r')){
+        hm10_buffer[hm10_buffer_cursor] = '\0';
+        hm10_command_ready = true;
         hm10_buffer_cursor = 0;
+
+    } else{
+            // only fill buffer
+            if (hm10_buffer_cursor < BLE_BUFFER_SIZE - 1){
+                // store character and increment counter
+                hm10_buffer[hm10_buffer_cursor++] = c;
+            }
     }
+    
 }
 
 // sensor array multi sampling
@@ -147,6 +172,9 @@ int gap_counter;
 float lcd_left_rpm = 0.0;
 float lcd_right_rpm = 0.0;
 float lcd_sensor_position = 0.0;
+float lcd_steer_factor = 0.0;
+float lcd_left_target = 0.0;
+float lcd_right_target = 0.0;
 
 // task running at 4kHz to get samples
 // get 4 samples of sensor array position before running contol update
@@ -212,6 +240,7 @@ void state_machine_task(){
 
                 // store diff factor for next iteration
                 prev_diff_factor = diff_factor;
+                lcd_steer_factor = diff_factor;
 
                 // calculate turn factor
                 float turn_factor = fabsf(diff_factor) / MAX_DIFF_FACTOR;
@@ -221,6 +250,9 @@ void state_machine_task(){
                 // calculate target RPM
                 float left_target = adjusted_base_target - diff_factor;
                 float right_target = adjusted_base_target + diff_factor;
+
+                lcd_left_target = left_target;
+                lcd_right_target = right_target;
 
                 // calculate rpm error
                 float left_error = left_target - left_motor_rpm;
@@ -286,7 +318,24 @@ void state_machine_task(){
                 break;
             }
             case STATE_TEST_MOTOR:{
-                // todo
+                float left_target = 200.0f;
+                float right_target = 200.0f;
+
+                lcd_left_target = left_target;
+                lcd_right_target = right_target;
+
+                // calculate rpm error
+                float left_error = left_target - left_motor_rpm;
+                float right_error = right_target - right_motor_rpm;
+
+                // update motor pid
+                float left_power = left_motor_pid.update(left_error);
+                float right_power = right_motor_pid.update(right_error);
+
+                // set motor power
+                left_motor.setPower(left_power);
+                right_motor.setPower(right_power);
+
                 break;
             }
             default:
@@ -306,6 +355,16 @@ void lcd_update_task(){
     lcd.printf("distance: %5.3f, sd: %f", lcd_sensor_position, sensor_array.read_sd());
 
     lcd.copy_to_lcd();
+
+    if (lcd_steer_factor != 0.0){
+        hm10.printf("distance: %f\n", lcd_sensor_position);
+        hm10.printf("steer factor: %f\n", lcd_steer_factor);
+        hm10.printf("target: %f, %f\n", lcd_left_target, lcd_right_target);
+        hm10.printf("rpm: %f, %f\n\n", lcd_left_rpm, lcd_right_rpm);
+    }
+    
+    lcd_steer_factor = 0.0;
+
 }
 
 /// the main function
@@ -335,35 +394,20 @@ int main() {
 
     // start the control loop
     while(true) {
-        // check if a state change is required
-        if (strcmp(hm10_buffer, "stop") == 0){
-            // set state
-            enter_idle_state();
-            // clear buffer
-            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
-            hm10_buffer_cursor = 0;
+        if (hm10_command_ready) {
+            hm10_command_ready = false;
 
-        } else if (strcmp(hm10_buffer, "test") == 0){
-            // set state
-            state = STATE_TEST_MOTOR;
-            motor_en.write(0);
-            // clear buffer
-            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
-            hm10_buffer_cursor = 0;
+            if (strcmp(hm10_buffer, "start") == 0) {
+                enter_run_state();
+            } else if (strcmp(hm10_buffer, "stop") == 0) {
+                enter_idle_state();
+            } else if (strcmp(hm10_buffer, "uturn") == 0) {
+                enter_uturn_state();
+            } else if (strcmp(hm10_buffer, "test") == 0) {
+                enter_test_state();
+            }
 
-        } else if (strcmp(hm10_buffer, "start") == 0){
-            // set state
-            enter_run_state();
-            // clear buffer
             memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
-            hm10_buffer_cursor = 0;
-
-        } else if (strcmp(hm10_buffer, "uturn") == 0) {
-            // set state
-            enter_uturn_state();
-            // clear buffer
-            memset(hm10_buffer, 0, BLE_BUFFER_SIZE);
-            hm10_buffer_cursor = 0;
         }
     }
 }
