@@ -40,12 +40,12 @@
 #define STEER_PID_KI 0.0f
 #define STEER_PID_KD 0.0f
 
-#define LEFT_PID_KP 0.03f
-#define LEFT_PID_KI 0.02f
+#define LEFT_PID_KP 0.06f
+#define LEFT_PID_KI 0.002f
 #define LEFT_PID_KD 0.0f
 
-#define RIGHT_PID_KP 0.03f
-#define RIGHT_PID_KI 0.02f
+#define RIGHT_PID_KP 0.0599f
+#define RIGHT_PID_KI 0.002f
 #define RIGHT_PID_KD 0.0f
 
 // global timer
