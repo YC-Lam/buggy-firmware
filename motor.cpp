@@ -2,12 +2,10 @@
 #include "motor.h"
 #include "QEI.h"
 
-#define PWM_PERIOD_US 50
+#define PWM_PERIOD_US 40
 #define PULSE_PER_REVOLUTION 1024
-// accumulation window
-#define WINDOW_MS 10
-// smoothing factor (0 = slow, 1 = fast)
-#define ALPHA 0.2f             
+// smoothing factor
+#define ALPHA 0.1f             
 
 MotorControl::MotorControl(PinName pwm_pin, PinName bipolar_pin, PinName dir_pin, PinName chA, PinName chB, bool inverted): 
     pwm_pin(pwm_pin), bipolar_pin(bipolar_pin), dir_pin(dir_pin), encoder(chA, chB, NC, 256, QEI::X4_ENCODING), inverted(inverted){
@@ -121,31 +119,19 @@ int MotorControl::getPulses(){
 }
 
 /// calculate the rpm from pulses in window
-float MotorControl::getRPM_1KHz(){
-    // read total encoder count
+float MotorControl::getRPM(int freq)
+{
+    // read encoder
     int pulses = getPulses();
-    // new pulses since last sample
+
+    // delta since last call
     int diff = pulses - last_pulses;
     last_pulses = pulses;
 
-    pulse_accumulator += diff;
-    sample_count++;
+    //
+    float rpm = (diff * 60.0f * freq) / PULSE_PER_REVOLUTION;
 
-    // compute raw RPM every WINDOW_MS
-    if (sample_count >= WINDOW_MS) {
-        // window in microseconds
-        float interval_us = WINDOW_MS * 1000.0f; 
-
-        rpm = (pulse_accumulator * 60000000.0f) /
-              (interval_us * PULSE_PER_REVOLUTION);
-
-        // reset for next window
-        pulse_accumulator = 0;
-        sample_count = 0;
-    }
-
-    // exponential smoothing applied every ms
     rpm_filtered = ALPHA * rpm + (1.0f - ALPHA) * rpm_filtered;
 
-    return rpm_filtered;
+    return rpm;
 }

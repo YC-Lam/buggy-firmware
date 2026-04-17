@@ -17,7 +17,7 @@ class PidControl{
         float integrator_limit;
         float frequency;
     public:
-        PidControl(float Kp, float Ki, float Kd);
+        PidControl(float Kp, float Ki, float Kd, float freq);
         ~PidControl();
         float update(float error);
         void reset();

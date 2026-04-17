@@ -4,7 +4,7 @@
 #include <math.h>
 #include "pid.h"
 
-PidControl::PidControl(float Kp, float Ki, float Kd){
+PidControl::PidControl(float Kp, float Ki, float Kd, float freq){
     PidControl::Kp = Kp;
     PidControl::Ki = Ki;
     PidControl::Kd = Kd;
@@ -16,7 +16,7 @@ PidControl::PidControl(float Kp, float Ki, float Kd){
     integrator = 0.0;
     previous_error = 0.0;
     integrator_limit = INFINITY;
-    frequency = 1.0;
+    frequency = freq;
 }
 
 PidControl::~PidControl(){}
@@ -29,7 +29,6 @@ void PidControl::reset(){
     integrator = 0.0;
     previous_error = 0.0;
     integrator_limit = INFINITY;
-    frequency = 1.0;
 }
 
 void PidControl::set_kp(float kp){
@@ -60,6 +59,10 @@ float PidControl::update(float error){
     output  = Kp * error;
     output += Ki * integrator / frequency;
     output += Kd * (error - previous_error) * frequency;
+
+    if (output > 1.0f || output < 0.0f) {
+        integrator *= 0.9f; // anti-windup
+    }
 
     previous_error = error;
     return output;

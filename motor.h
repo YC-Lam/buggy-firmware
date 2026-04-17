@@ -31,5 +31,5 @@ class MotorControl{
         
         bool isBipolarMode();
         int getPulses();
-        float getRPM_1KHz();
+        float getRPM(int freq);
 };
