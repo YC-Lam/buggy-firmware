@@ -436,8 +436,37 @@ void state_machine_task(){
             break;
         }
         case STATE_UTURN:{
+            //Finish turnaround once the line is detected again
+            
+            if (!isnan(position)) {
+                if (fabsf(position) < 0.15f) {
+                    enter_run_state();
+                    break;
+                }
+            }
 
-            // todo
+            // Spin in place
+            float left_target = UTURN_TARGET_RPM;
+            float right_target = UTURN_TARGET_RPM;
+
+            lcd_left_target = left_target;
+            lcd_right_target = right_target;
+
+            float left_error = left_target - left_motor_rpm;
+            float right_error = right_target - right_motor_rpm;
+
+            float left_power = MOTOR_BASE_POWER + left_motor_pid.update(left_error);
+            float right_power = MOTOR_BASE_POWER + right_motor_pid.update(right_error);
+
+            left_power = (1.0f - MOTOR_SMOOTH_FACTOR) * left_power + MOTOR_SMOOTH_FACTOR * prev_left_power;
+            right_power = (1.0f - MOTOR_SMOOTH_FACTOR) * right_power + MOTOR_SMOOTH_FACTOR * prev_right_power;
+
+            prev_left_power = left_power;
+            prev_right_power = right_power;
+
+            left_motor.setPower(left_power);
+            right_motor.setPower(right_power);
+
             break;
         }
         case STATE_TEST_MOTOR:{
