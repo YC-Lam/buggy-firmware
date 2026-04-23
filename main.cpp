@@ -34,13 +34,13 @@
 /// target rpm in different states
 #define RUN_TARGET_RPM 250
 #define GAP_TARGET_RPM 200
-#define UTURN_TARGET_RPM 110
+#define UTURN_TARGET_RPM 80
 
 // turnaround tuning constants
-#define UTURN_COARSE_PULSES 2000  // tune this on the real track
-#define UTURN_ALIGN_RPM 50       // slow speed for final alignment
+#define UTURN_COARSE_PULSES 1650  // tune this on the real track
+#define UTURN_ALIGN_RPM 45     // slow speed for final alignment
 #define UTURN_CENTER_TOL 3.0f      // mm: how close to centre the line must be
-#define UTURN_ALIGN_TIMEOUT 400    // ticks at 200 Hz = 2 s safety cap on phase 1
+#define UTURN_ALIGN_TIMEOUT 200    // ticks at 200 Hz = 2 s safety cap on phase 1
 
 #define STEER_PID_KP 3.5f
 #define STEER_PID_KI 0.0f
@@ -54,6 +54,9 @@
 #define RIGHT_PID_KI 0.002f
 #define RIGHT_PID_KD 0.0f
 
+#define UTURN_PID_KP 0.08f
+#define UTURN_LEFT_KP 0.08f
+#define UTURN_RIGHT_KP 0.08f
 // global timer
 Timer global_timer;
 
@@ -141,7 +144,8 @@ void enter_idle_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-
+   left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     prev_diff_factor = 0.0f;
     prev_left_power = 0.0f;
     prev_right_power = 0.0f;
@@ -157,7 +161,8 @@ void enter_run_state() {
 
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
-
+    left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     left_motor.setForward();
     right_motor.setForward();
 
@@ -172,12 +177,13 @@ void enter_test_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-
+    left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
 
-    left_motor.setForward();
-    right_motor.setForward();
+    left_motor.setBackward();
+    right_motor.setBackward();
 
     prev_left_power = 0.0f;
     prev_right_power = 0.0f;
@@ -190,13 +196,10 @@ void enter_uturn_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-lcd.cls();
-lcd.locate(0, 0);
-lcd.printf("STATE UTURN");
-lcd.copy_to_lcd();
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
-
+    left_motor_pid.set_kp(UTURN_LEFT_KP);
+    right_motor_pid.set_kp(UTURN_RIGHT_KP);
     // opposite directions so the buggy pivots on the spot
     left_motor.setForward();
     right_motor.setBackward();
@@ -226,7 +229,8 @@ void enter_motor_tune_right_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-
+    left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
 
@@ -252,7 +256,8 @@ void enter_motor_tune_left_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-
+    left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
 
@@ -278,7 +283,8 @@ void enter_steer_tune_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
-
+    left_motor_pid.set_kp(LEFT_PID_KP);
+    right_motor_pid.set_kp(RIGHT_PID_KP);
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
 
@@ -487,12 +493,14 @@ void state_machine_task() {
                     prev_left_power = 0.0f;
                     prev_right_power = 0.0f;
                     uturn_align_counter = 0;
+                    enter_idle_state();
                 }
             }
 
             // phase 1: slow final alignment using line sensor
-            if (uturn_phase == 1) {
+           /*/ if (uturn_phase == 1) {
                 target_rpm = UTURN_ALIGN_RPM;
+
 
                 // safety: if line is never found, stop instead of spinning forever
                 uturn_align_counter++;
@@ -506,7 +514,7 @@ void state_machine_task() {
                     enter_run_state();
                     break;
                 }
-            }
+            }*/
 
             // regulate both wheels using same speed PID structure
             float left_error = target_rpm - fabsf(left_motor_rpm);
@@ -673,7 +681,6 @@ void lcd_update_task() {
 }
 
 /// main entry
-extern "C" int $Super$$main(void);
 
 int main() {
     global_timer.start();
@@ -705,16 +712,10 @@ int main() {
             } else if (strcmp(hm10_buffer, "stop") == 0) {
                 enter_idle_state();
             } else if (strcmp(hm10_buffer, "turn") == 0) {
-    lcd.cls();
-    lcd.locate(0, 0);
-    lcd.printf("TURN CMD");
-    lcd.copy_to_lcd();
+   
     enter_uturn_state();
           } else if (strcmp(hm10_buffer, "test") == 0) {
-    lcd.cls();
-    lcd.locate(0, 0);
-    lcd.printf("BLE TEST OK");
-    lcd.copy_to_lcd();
+              enter_test_state();
             } else if (strcmp(hm10_buffer, "right") == 0) {
                 enter_motor_tune_right_state();
             } else if (strcmp(hm10_buffer, "left") == 0) {
