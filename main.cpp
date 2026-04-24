@@ -196,10 +196,13 @@ void enter_uturn_state() {
     steering_pid.reset();
     left_motor_pid.reset();
     right_motor_pid.reset();
+    
     left_motor.setBipolarMode(false);
     right_motor.setBipolarMode(false);
+
     left_motor_pid.set_kp(UTURN_LEFT_KP);
     right_motor_pid.set_kp(UTURN_RIGHT_KP);
+
     // opposite directions so the buggy pivots on the spot
     left_motor.setForward();
     right_motor.setBackward();
