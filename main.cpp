@@ -24,33 +24,33 @@
 // maximum differential factor, defines half the maximum difference between two motors
 #define MAX_DIFF_FACTOR 140
 // turn factor constant, defines how much a turn reduces target speed
-#define TURN_FACTOR_CONSTANT 0.8f
+#define TURN_FACTOR_CONSTANT 0.8f // 0.8
 // number of counts before stopping buggy in gap
-#define GAP_MAX_COUNT 20
+#define GAP_MAX_COUNT 10
 // smoothing factor of motor output
 #define MOTOR_SMOOTH_FACTOR 0.3f
 #define MOTOR_BASE_POWER 0.5f
 
 /// target rpm in different states
-#define RUN_TARGET_RPM 250
+#define RUN_TARGET_RPM 300 //250
 #define GAP_TARGET_RPM 200
 #define UTURN_TARGET_RPM 80
 
 // turnaround tuning constants
-#define UTURN_COARSE_PULSES 1650  // tune this on the real track
-#define UTURN_ALIGN_RPM 45     // slow speed for final alignment
-#define UTURN_CENTER_TOL 3.0f      // mm: how close to centre the line must be
-#define UTURN_ALIGN_TIMEOUT 200    // ticks at 200 Hz = 2 s safety cap on phase 1
+#define UTURN_COARSE_PULSES 1000 // tune this on the real track
+#define UTURN_ALIGN_RPM 80     // slow speed for final alignment
+#define UTURN_CENTER_TOL 10.0f      // mm: how close to centre the line must be
+#define UTURN_ALIGN_TIMEOUT 200   // ticks at 200 Hz = 2 s safety cap on phase 1
 
-#define STEER_PID_KP 3.5f
-#define STEER_PID_KI 0.0f
-#define STEER_PID_KD 0.0f
+#define STEER_PID_KP 6.0f
+#define STEER_PID_KI 0.002f
+#define STEER_PID_KD 0.0005f
 
-#define LEFT_PID_KP 0.05f
+#define LEFT_PID_KP 0.07f
 #define LEFT_PID_KI 0.002f
 #define LEFT_PID_KD 0.0f
 
-#define RIGHT_PID_KP 0.05f
+#define RIGHT_PID_KP 0.07f
 #define RIGHT_PID_KI 0.002f
 #define RIGHT_PID_KD 0.0f
 
@@ -201,8 +201,8 @@ void enter_uturn_state() {
     left_motor_pid.set_kp(UTURN_LEFT_KP);
     right_motor_pid.set_kp(UTURN_RIGHT_KP);
     // opposite directions so the buggy pivots on the spot
-    left_motor.setForward();
-    right_motor.setBackward();
+    left_motor.setBackward();
+    right_motor.setForward();
 
     prev_diff_factor = 0.0f;
     prev_left_power = 0.0f;
@@ -493,12 +493,12 @@ void state_machine_task() {
                     prev_left_power = 0.0f;
                     prev_right_power = 0.0f;
                     uturn_align_counter = 0;
-                    enter_idle_state();
+                    // enter_run_state();
                 }
             }
 
             // phase 1: slow final alignment using line sensor
-           /*/ if (uturn_phase == 1) {
+            if (uturn_phase == 1) {
                 target_rpm = UTURN_ALIGN_RPM;
 
 
@@ -514,7 +514,7 @@ void state_machine_task() {
                     enter_run_state();
                     break;
                 }
-            }*/
+            }
 
             // regulate both wheels using same speed PID structure
             float left_error = target_rpm - fabsf(left_motor_rpm);
