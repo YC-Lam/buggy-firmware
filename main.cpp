@@ -22,17 +22,17 @@
 #define SENSOR_SAMPLE_COUNT 20
 
 // maximum differential factor, defines half the maximum difference between two motors
-#define MAX_DIFF_FACTOR 140
+#define MAX_DIFF_FACTOR 140//  140
 // turn factor constant, defines how much a turn reduces target speed
-#define TURN_FACTOR_CONSTANT 0.8f // 0.8
+#define TURN_FACTOR_CONSTANT 0.5f // 0.8
 // number of counts before stopping buggy in gap
 #define GAP_MAX_COUNT 10
 // smoothing factor of motor output
-#define MOTOR_SMOOTH_FACTOR 0.3f
+#define MOTOR_SMOOTH_FACTOR 0.45f
 #define MOTOR_BASE_POWER 0.5f
 
 /// target rpm in different states
-#define RUN_TARGET_RPM 300 //250
+#define RUN_TARGET_RPM 320 //250
 #define GAP_TARGET_RPM 200
 #define UTURN_TARGET_RPM 80
 
@@ -42,17 +42,17 @@
 #define UTURN_CENTER_TOL 10.0f      // mm: how close to centre the line must be
 #define UTURN_ALIGN_TIMEOUT 200   // ticks at 200 Hz = 2 s safety cap on phase 1
 
-#define STEER_PID_KP 6.0f
-#define STEER_PID_KI 0.002f
-#define STEER_PID_KD 0.0005f
+#define STEER_PID_KP 7.0f
+#define STEER_PID_KI 0.0015f // 0.002
+#define STEER_PID_KD 0.0002f // 0.0006
 
 #define LEFT_PID_KP 0.07f
 #define LEFT_PID_KI 0.002f
-#define LEFT_PID_KD 0.0f
+#define LEFT_PID_KD 0.00005f
 
 #define RIGHT_PID_KP 0.07f
 #define RIGHT_PID_KI 0.002f
-#define RIGHT_PID_KD 0.0f
+#define RIGHT_PID_KD 0.00005f
 
 #define UTURN_PID_KP 0.08f
 #define UTURN_LEFT_KP 0.08f
