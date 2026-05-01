@@ -24,11 +24,11 @@
 // maximum differential factor, defines half the maximum difference between two motors
 #define MAX_DIFF_FACTOR 140//  140
 // turn factor constant, defines how much a turn reduces target speed
-#define TURN_FACTOR_CONSTANT 0.5f // 0.8
+#define TURN_FACTOR_CONSTANT 0.7f // 0.8
 // number of counts before stopping buggy in gap
 #define GAP_MAX_COUNT 10
 // smoothing factor of motor output
-#define MOTOR_SMOOTH_FACTOR 0.45f
+#define MOTOR_SMOOTH_FACTOR 0.3f
 #define MOTOR_BASE_POWER 0.5f
 
 /// target rpm in different states
